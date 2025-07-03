@@ -1,336 +1,353 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Netflix-like Movie Recommender</title>
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Custom CSS (for minimal overrides or specific elements) -->
-    <link rel="stylesheet" href="/static/css/style.css">
-    <!-- Vue.js -->
-    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-</head>
-<body class="bg-gray-900 text-gray-100 flex flex-col min-h-screen font-sans" id="app"> {# id="app" is now on body #}
-    <!-- Header -->
-    <header class="bg-gray-800 p-4 shadow-md">
-        <div class="container mx-auto flex justify-between items-center">
-            <a href="/" class="text-red-600 text-3xl font-bold tracking-wide">NETFLIX RECOMENDADOR</a>
-            <nav class="space-x-4">
-                <a href="/" class="text-gray-300 hover:text-red-500 transition-colors text-lg font-semibold">Home</a>
-                <span v-if="isLoggedIn" class="text-gray-300 text-lg font-semibold">Welcome, {% raw %}{{ username }}{% endraw %}!</span>
-                <a v-if="!isLoggedIn" href="/register" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors text-base font-semibold">Register</a>
-                <a v-if="!isLoggedIn" href="/login" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors text-base font-semibold">Login</a>
-                <a v-if="isLoggedIn" href="/logout" class="px-4 py-2 bg-gray-700 text-gray-300 rounded-md hover:bg-gray-600 transition-colors text-base font-semibold">Logout</a>
-                <a v-if="isLoggedIn" @click="getLikedMovies" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors cursor-pointer text-base font-semibold">My Liked Movies</a>
-            </nav>
-        </div>
-    </header>
+{% extends "base.html" %}
+{% block title %}Home{% endblock %}
 
-    <main class="flex-grow flex items-center justify-center p-4">
-        <div class="bg-gray-800 rounded-lg shadow-2xl p-8 max-w-5xl w-full border border-gray-700"> {# Removed id="app-container" #}
-            {# Flash messages are outside the Vue app, so they are rendered by Jinja2 directly #}
-            <div class="mb-6">
-                {% for category, message in flashed_messages %}
-                <div class="p-4 rounded-md text-base {% if category == 'success' %}bg-green-700 text-white{% elif category == 'danger' %}bg-red-700 text-white{% else %}bg-blue-700 text-white{% endif %} mb-3 shadow-md">
-                    {{ message }}
-                </div>
-                {% endfor %}
-            </div>
+{% block content %}
+<div id="app-container" class="bg-gray-800 rounded-lg shadow-2xl p-8 max-w-5xl w-full border border-gray-700 mx-auto">
+    <h1 class="text-5xl font-bold text-center text-red-600 mb-10 tracking-wide">MATCH MOVIE</h1>
 
-            <h1 class="text-5xl font-bold text-center text-red-600 mb-10 tracking-wide">NETFLIX RECOMENDADOR</h1>
-
-            <div class="flex justify-center mb-8 space-x-4">
-                <input type="text" v-model="searchQuery" @keyup.enter="searchMovies" placeholder="Search for a movie..." class="flex-grow p-4 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-600 text-lg">
-                <button @click="searchMovies" class="px-8 py-4 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center space-x-3 text-lg font-semibold">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" viewBox="0 0 20 20" fill="currentColor">
-                        <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
-                    </svg>
-                    <span>Search</span>
-                </button>
-            </div>
-
-            <div class="flex justify-center mb-8 space-x-4">
-                <select v-model="selectedGenres" multiple class="block w-full max-w-md p-4 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 focus:outline-none focus:ring-2 focus:ring-red-600 text-lg">
-                    <option disabled value="">Select Genres</option>
-                    <option v-for="genre in allGenres" :value="genre.id">{% raw %}{{ genre.name }}{% endraw %}</option>
-                </select>
-                <button @click="applyGenreFilter" class="px-8 py-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-3 text-lg font-semibold">
-                    Apply Filter
-                </button>
-            </div>
-
-            <div id="movie-display" class="min-h-[300px] flex items-center justify-center flex-col">
-                <div v-if="movie && !searchResults && !likedMoviesList" class="text-center">
-                    <h2 class="text-4xl font-bold text-gray-100 mb-4">{% raw %}{{ movie.title }}{% endraw %}</h2>
-                    <p class="text-xl text-gray-300 mb-6">Score: {% raw %}{{ movie.score }}{% endraw %}</p>
-                    <img v-if="movie.poster_url" :src="movie.poster_url" alt="Movie Poster" class="mx-auto rounded-lg shadow-xl max-h-[500px] object-contain border-2 border-gray-700 mb-6">
-                    <div v-if="movie.trailer_url" class="w-full max-w-xl mx-auto mb-6">
-                        <div class="relative" style="padding-bottom: 56.25%; height: 0;">
-                            <iframe :src="movie.trailer_url" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen class="absolute top-0 left-0 w-full h-full rounded-lg"></iframe>
-                        </div>
-                    </div>
-                    <div v-else class="w-full max-w-xl mx-auto mb-6 p-4 bg-gray-700 rounded-lg text-gray-400 text-center text-lg">
-                        No trailer available for this movie.
-                    </div>
-                    <p class="text-lg text-gray-300 mb-2">**Overview:** {% raw %}{{ movie.overview }}{% endraw %}</p>
-                    <p class="text-lg text-gray-300 mb-2">**Release Date:** {% raw %}{{ movie.release_date }}{% endraw %}</p>
-                    <p class="text-lg text-gray-300 mb-2">**Genres:** {% raw %}{{ movie.genres }}{% endraw %}</p>
-                    <p class="text-lg text-gray-300 mb-6">**Cast:** {% raw %}{{ movie.cast }}{% endraw %}</p>
-                    <div v-if="isLoggedIn" class="flex justify-center space-x-6 mt-6">
-                        <button @click="setPreference(movie.title, movie.id, movie.genres, true)" class="px-8 py-4 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center space-x-3 text-xl font-semibold">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" viewBox="0 0 20 20" fill="currentColor">
-                                <path d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" />
-                            </svg>
-                            <span>Like</span>
-                        </button>
-                        <button @click="setPreference(movie.title, movie.id, movie.genres, false)" class="px-8 py-4 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center space-x-3 text-xl font-semibold">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" viewBox="0 0 20 20" fill="currentColor">
-                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM7 9a1 1 0 100 2h6a1 1 0 100-2H7z" clip-rule="evenodd" />
-                            </svg>
-                            <span>Dislike</span>
-                        </button>
-                    </div>
-                </div>
-                <div v-else-if="searchResults && searchResults.length > 0" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 w-full">
-                    <h2 class="col-span-full text-3xl font-bold text-gray-100 mb-6 text-center">Search Results for "{% raw %}{{ lastSearchQuery }}{% endraw %}"</h2>
-                    <div v-for="result in searchResults" :key="result.title" class="bg-gray-700 rounded-lg shadow-lg overflow-hidden transform hover:scale-105 transition-transform duration-300 ease-in-out group">
-                        <img v-if="result.poster_url" :src="result.poster_url" alt="Movie Poster" class="w-full h-72 object-cover group-hover:opacity-80 transition-opacity duration-300">
-                        <div class="p-5">
-                            <h3 class="text-xl font-semibold text-gray-100 mb-2 truncate">{% raw %}{{ result.title }}{% endraw %}</h3>
-                            <p class="text-base text-gray-400">Score: {% raw %}{{ result.score }}{% endraw %}</p>
-                            <p class="text-sm text-gray-400">**Overview:** {% raw %}{{ result.overview }}{% endraw %}</p>
-                            <p class="text-sm text-gray-400">**Release Date:** {% raw %}{{ result.release_date }}{% endraw %}</p>
-                            <p class="text-sm text-gray-400">**Genres:** {% raw %}{{ result.genres }}{% endraw %}</p>
-                            <p class="text-sm text-gray-400">**Cast:** {% raw %}{{ result.cast }}{% endraw %}</p>
-                            <div v-if="result.trailer_url" class="w-full mx-auto mt-4">
-                                <div class="relative" style="padding-bottom: 56.25%; height: 0;">
-                                    <iframe :src="result.trailer_url" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen class="absolute top-0 left-0 w-full h-full rounded-lg"></iframe>
-                                </div>
-                            </div>
-                            <div v-else class="w-full mx-auto mt-4 p-3 bg-gray-800 rounded-lg text-gray-500 text-center text-sm">
-                                No trailer available.
-                            </div>
-                            <p v-else class="text-base text-gray-400">No poster available</p>
-                            <div v-if="isLoggedIn" class="flex justify-center space-x-3 mt-4">
-                                <button @click="setPreference(result.title, result.id, result.genres, true)" class="px-4 py-2 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 transition-colors">Like</button>
-                                <button @click="setPreference(result.title, result.id, result.genres, false)" class="px-4 py-2 bg-red-600 text-white text-sm rounded-md hover:bg-red-700 transition-colors">Dislike</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div v-else-if="likedMoviesList" class="text-center w-full">
-                    <h2 class="text-3xl font-bold text-gray-100 mb-6">My Liked Movies</h2>
-                    <ul v-if="likedMoviesList.length > 0" class="list-disc list-inside text-left mx-auto max-w-xl bg-gray-700 p-6 rounded-lg shadow-md">
-                        <li v-for="likedMovie in likedMoviesList" :key="likedMovie" class="py-2 border-b border-gray-600 last:border-b-0 text-lg text-gray-200">{% raw %}{{ likedMovie }}{% endraw %}</li>
-                    </ul>
-                    <p v-else class="text-gray-400 text-lg mt-4">You haven't liked any movies yet.</p>
-                </div>
-                <p v-else-if="searchResults && searchResults.length === 0" class="text-gray-400 text-lg text-center">
-                    No results found for "{% raw %}{{ lastSearchQuery }}{% endraw %}".
-                </p>
-                <p v-else class="text-gray-400 text-lg text-center">
-                    Click the button to get a random movie recommendation or search for a movie!
-                </p>
-                <p v-if="error" class="text-red-500 text-center mt-6 text-lg">{% raw %}{{ error }}{% endraw %}</p>
-            </div>
-            <div class="text-center mt-10">
-                <button @click="getRandomMovie" class="px-10 py-5 bg-red-600 text-white rounded-lg shadow-xl hover:bg-red-700 transition-colors text-2xl font-bold flex items-center justify-center mx-auto space-x-4">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" viewBox="0 0 20 20" fill="currentColor">
-                        <path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm3 2h6v4H7V5zm-3 7h12v3H4v-3z" clip-rule="evenodd" />
-                    </svg>
-                    <span>Get Random Recommendation</span>
-                </button>
-            </div>
-        </div>
-    </main>
-    <div v-if="toast.show" :class="['fixed', 'bottom-4', 'right-4', 'p-4', 'rounded-lg', 'shadow-lg', 'text-white', 'z-50', toast.type === 'success' ? 'bg-green-600' : toast.type === 'error' ? 'bg-red-600' : 'bg-blue-600']">
-        {% raw %}{{ toast.message }}{% endraw %}
+    <div class="flex justify-center mb-8 space-x-4">
+        <input type="text" v-model="{% raw %}searchQuery{% endraw %}" @keyup.enter="{% raw %}searchMovies{% endraw %}" placeholder="Search for a movie..." class="flex-grow p-4 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-600 text-lg">
+        <button @click="{% raw %}searchMovies{% endraw %}" class="px-8 py-4 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center space-x-3 text-lg font-semibold">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
+            </svg>
+            <span>Search</span>
+        </button>
     </div>
-    <script>
-        // Mount the Vue app to the #app div
-        const { createApp } = Vue
 
-        createApp({
-            data() {
-                return {
-                    movie: null,
-                    error: null,
-                    searchQuery: '',
-                    searchResults: null,
-                    lastSearchQuery: '',
-                    isLoggedIn: false,
-                    username: '',
-                    flashMessages: [],
-                    likedMoviesList: null,
-                    toast: {
-                        show: false,
-                        message: '',
-                        type: 'info'
-                    },
-                    allGenres: [], // New: Store all genres from TMDb
-                    selectedGenres: [] // New: Store selected genre IDs
+    <div class="flex justify-center mb-8 space-x-4">
+        <select v-model="{% raw %}selectedGenres{% endraw %}" multiple class="block w-full max-w-md p-4 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 focus:outline-none focus:ring-2 focus:ring-red-600 text-lg">
+            <option disabled value="">Select Genres</option>
+            <option v-for="{% raw %}genre in allGenres{% endraw %}" :value="{% raw %}genre.id{% endraw %}">{% raw %}{{ genre.name }}{% endraw %}</option>
+        </select>
+        <button @click="{% raw %}applyGenreFilter{% endraw %}" class="px-8 py-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-3 text-lg font-semibold">
+            Apply Filter
+        </button>
+    </div>
+
+    <div id="movie-display" class="min-h-[300px] flex items-center justify-center flex-col">
+        <div v-if="{% raw %}movie && !searchResults && !likedMoviesList{% endraw %}" class="bg-gray-700 rounded-lg shadow-lg overflow-hidden transform hover:scale-105 transition-transform duration-300 ease-in-out group p-8 text-center max-w-2xl mx-auto">
+            <h2 class="text-4xl font-bold text-gray-100 mb-4">{% raw %}{{ movie.title }}{% endraw %}</h2>
+            <p class="text-xl text-gray-300 mb-6">Score: {% raw %}{{ movie.score }}{% endraw %}</p>
+            <img v-if="{% raw %}movie.poster_url{% endraw %}" :src="{% raw %}movie.poster_url{% endraw %}" alt="Movie Poster" class="mx-auto rounded-lg shadow-xl max-h-[500px] object-contain border-2 border-gray-700 mb-6">
+            <div v-if="{% raw %}movie.trailer_url{% endraw %}" class="w-full max-w-xl mx-auto mb-6">
+                <div class="relative" style="padding-bottom: 56.25%; height: 0;">
+                    <iframe :src="{% raw %}movie.trailer_url{% endraw %}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen class="absolute top-0 left-0 w-full h-full rounded-lg"></iframe>
+                </div>
+            </div>
+            <div v-else class="w-full max-w-xl mx-auto mb-6 p-4 bg-gray-800 rounded-lg text-gray-400 text-center text-lg">
+                No trailer available for this movie.
+            </div>
+            <p class="text-lg text-gray-300 mb-2 text-left">**Overview:** {% raw %}{{ movie.overview }}{% endraw %}</p>
+            <p class="text-lg text-gray-300 mb-2 text-left">**Release Date:** {% raw %}{{ movie.release_date }}{% endraw %}</p>
+            <p class="text-lg text-gray-300 mb-2 text-left">**Genres:** {% raw %}{{ movie.genres }}{% endraw %}</p>
+            <p class="text-lg text-gray-300 mb-6 text-left">**Cast:** {% raw %}{{ movie.cast }}{% endraw %}</p>
+            <div v-if="{% raw %}isLoggedIn{% endraw %}" class="flex justify-center space-x-6 mt-6">
+                <button @click="{% raw %}setPreference(movie.title, movie.id, movie.genres, true){% endraw %}" class="px-8 py-4 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center space-x-3 text-xl font-semibold">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" />
+                    </svg>
+                    <span>Like</span>
+                </button>
+                <button @click="{% raw %}setPreference(movie.title, movie.id, movie.genres, false){% endraw %}" class="px-8 py-4 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center space-x-3 text-xl font-semibold">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM7 9a1 1 0 100 2h6a1 1 0 100-2H7z" clip-rule="evenodd" />
+                    </svg>
+                    <span>Dislike</span>
+                </button>
+            </div>
+        </div>
+        <div v-else-if="{% raw %}searchResults && searchResults.length > 0{% endraw %}" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 w-full">
+            <h2 class="col-span-full text-3xl font-bold text-gray-100 mb-6 text-center">Search Results for "{% raw %}{{ lastSearchQuery }}{% endraw %}"</h2>
+            <div v-for="{% raw %}result in searchResults{% endraw %}" :key="{% raw %}result.title{% endraw %}" class="bg-gray-700 rounded-lg shadow-lg overflow-hidden transform hover:scale-105 transition-transform duration-300 ease-in-out group">
+                <img v-if="{% raw %}result.poster_url{% endraw %}" :src="{% raw %}result.poster_url{% endraw %}" alt="Movie Poster" class="w-full h-72 object-cover group-hover:opacity-80 transition-opacity duration-300">
+                <div class="p-5">
+                    <h3 class="text-xl font-semibold text-gray-100 mb-2 truncate">{% raw %}{{ result.title }}{% endraw %}</h3>
+                    <p class="text-base text-gray-400">Score: {% raw %}{{ result.score }}{% endraw %}</p>
+                    <p class="text-sm text-gray-400">**Overview:** {% raw %}{{ result.overview }}{% endraw %}</p>
+                    <p class="text-sm text-gray-400">**Release Date:** {% raw %}{{ result.release_date }}{% endraw %}</p>
+                    <p class="text-sm text-gray-400">**Genres:** {% raw %}{{ result.genres }}{% endraw %}</p>
+                    <p class="text-sm text-gray-400">**Cast:** {% raw %}{{ result.cast }}{% endraw %}</p>
+                    <div v-if="{% raw %}result.trailer_url{% endraw %}" class="w-full mx-auto mt-4">
+                        <div class="relative" style="padding-bottom: 56.25%; height: 0;">
+                            <iframe :src="{% raw %}result.trailer_url{% endraw %}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen class="absolute top-0 left-0 w-full h-full rounded-lg"></iframe>
+                        </div>
+                    </div>
+                    <div v-else class="w-full mx-auto mt-4 p-3 bg-gray-800 rounded-lg text-gray-500 text-center text-sm">
+                        No trailer available.
+                    </div>
+                    <p v-else class="text-base text-gray-400">No poster available</p>
+                    <div v-if="{% raw %}isLoggedIn{% endraw %}" class="flex justify-center space-x-3 mt-4">
+                        <button @click="{% raw %}setPreference(result.title, result.id, result.genres, true){% endraw %}" class="px-4 py-2 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 transition-colors">Like</button>
+                        <button @click="{% raw %}setPreference(result.title, result.id, result.genres, false){% endraw %}" class="px-4 py-2 bg-red-600 text-white text-sm rounded-md hover:bg-red-700 transition-colors">Dislike</button>
+                    </div>
+                </div>
+            </div>
+            <div v-else-if="{% raw %}likedMoviesList{% endraw %}" class="text-center w-full">
+                <h2 class="text-3xl font-bold text-gray-100 mb-6">My Liked Movies</h2>
+                <ul v-if="{% raw %}likedMoviesList.length > 0{% endraw %}" class="list-disc list-inside text-left mx-auto max-w-xl bg-gray-700 p-6 rounded-lg shadow-md">
+                    <li v-for="{% raw %}likedMovie in likedMoviesList{% endraw %}" :key="{% raw %}likedMovie{% endraw %}" class="py-2 border-b border-gray-600 last:border-b-0 text-lg text-gray-200">{% raw %}{{ likedMovie }}{% endraw %}</li>
+                </ul>
+                <p v-else class="text-gray-400 text-lg mt-4">You haven't liked any movies yet.</p>
+            </div>
+            <p v-else-if="{% raw %}searchResults && searchResults.length === 0{% endraw %}" class="text-gray-400 text-lg text-center">
+                No results found for "{% raw %}{{ lastSearchQuery }}{% endraw %}".
+            </p>
+            <p v-else class="text-gray-400 text-lg text-center">
+                Click the button to get a random movie recommendation or search for a movie!
+            </p>
+            <p v-if="{% raw %}error{% endraw %}" class="text-red-500 text-center mt-6 text-lg">{% raw %}{{ error }}{% endraw %}</p>
+        </div>
+        <div class="text-center mt-10">
+            <button @click="{% raw %}getRandomMovie{% endraw %}" class="px-10 py-5 bg-red-600 text-white rounded-lg shadow-xl hover:bg-red-700 transition-colors text-2xl font-bold flex items-center justify-center mx-auto space-x-4">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm3 2h6v4H7V5zm-3 7h12v3H4v-3z" clip-rule="evenodd" />
+                </svg>
+                <span>Get Random Recommendation</span>
+            </button>
+            <button v-if="{% raw %}hasMoreMovies{% endraw %}" @click="{% raw %}fetchMovies{% endraw %}" class="px-10 py-5 bg-blue-600 text-white rounded-lg shadow-xl hover:bg-blue-700 transition-colors text-2xl font-bold flex items-center justify-center mx-auto space-x-4 mt-4">
+                <span>Load More Movies</span>
+            </button>
+            <button @click="{% raw %}fetchNewMovies{% endraw %}" class="px-10 py-5 bg-purple-600 text-white rounded-lg shadow-xl hover:bg-purple-700 transition-colors text-2xl font-bold flex items-center justify-center mx-auto space-x-4 mt-4">
+                <span>Fetch New Movies from TMDb</span>
+            </button>
+        </div>
+    </div>
+</main>
+<div v-if="{% raw %}toast.show{% endraw %}" :class="{% raw %}['fixed', 'bottom-4', 'right-4', 'p-4', 'rounded-lg', 'shadow-lg', 'text-white', 'z-50', toast.type === 'success' ? 'bg-green-600' : toast.type === 'error' ? 'bg-red-600' : 'bg-blue-600']{% endraw %}">
+    {% raw %}{{ toast.message }}{% endraw %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+<script>
+    new Vue({
+        el: '#app-container',
+        data: {
+            movie: null,
+            searchQuery: '',
+            searchResults: null,
+            lastSearchQuery: '',
+            isLoggedIn: false,
+            toast: {
+                show: false,
+                message: '',
+                type: ''
+            },
+            likedMoviesList: null, // To store liked movies for display
+            allGenres: [],
+            selectedGenres: [],
+            movies: [], // Movies will be fetched dynamically
+            genres: {{ genres | tojson }}, // Initialize with genres from Flask
+            error: null, // Initialize error property
+            currentPage: 1,
+            moviesPerPage: 20, // Number of movies to fetch per page
+            hasMoreMovies: true // To control loading more movies
+        },
+        created() {
+            this.fetchMovies(); // Load initial movies
+            // Initialize allGenres with the passed genres
+            this.allGenres = this.genres;
+        },
+        mounted() {
+            this.checkLoginStatus();
+            // Flash messages handling
+            const flashedMessages = {{ flashed_messages | tojson }};
+            if (flashedMessages) {
+                flashedMessages.forEach(message => {
+                    this.showToast(message[1], message[0]);
+                });
+            }
+        },
+        methods: {
+            async fetchMovies() {
+                if (!this.hasMoreMovies) return;
+
+                this.error = null;
+                try {
+                    const response = await axios.get(`/api/movies?page=${this.currentPage}`);
+                    if (response.data.length > 0) {
+                        this.movies = this.movies.concat(response.data);
+                        this.currentPage++;
+                        // Set initial movie if it's the first load
+                        if (!this.movie && this.movies.length > 0) {
+                            this.movie = this.getRandomMovieFromList(this.movies);
+                        }
+                    } else {
+                        this.hasMoreMovies = false; // No more movies to load
+                    }
+                } catch (error) {
+                    console.error('Error fetching movies:', error);
+                    this.error = 'Could not load movies. Please try again!';
                 }
             },
-            mounted() {
-                this.checkLoginStatus();
-                this.fetchAllGenres(); // New: Fetch all genres on mount
+            async fetchNewMovies() {
+                this.error = null;
+                try {
+                    // You can adjust the number of pages to fetch here
+                    const response = await axios.post('/api/fetch_new_movies', { num_pages: 1 }); 
+                    this.showToast(response.data.message, 'success');
+                    // After fetching new movies, reset and reload the movie list from the beginning
+                    this.movies = [];
+                    this.currentPage = 1;
+                    this.hasMoreMovies = true;
+                    await this.fetchMovies(); // Reload movies from DB including newly fetched ones
+                } catch (error) {
+                    console.error('Error fetching new movies:', error);
+                    this.showToast('Could not fetch new movies. Please try again!', 'error');
+                }
             },
-            methods: {
-                showToast(message, type = 'info') {
-                    this.toast.show = true;
-                    this.toast.message = message;
-                    this.toast.type = type;
-                    setTimeout(() => {
-                        this.toast.show = false;
-                        this.toast.message = '';
-                    }, 3000); // Hide after 3 seconds
-                },
-                async checkLoginStatus() {
-                    try {
-                        const response = await fetch('/status');
-                        if (response.ok) {
-                            const data = await response.json();
-                            this.isLoggedIn = data.isLoggedIn;
-                            this.username = data.username;
-                        } else {
-                            this.isLoggedIn = false;
-                            this.username = '';
+            getRandomMovieFromList(movieList) {
+                if (!movieList || movieList.length === 0) {
+                    return {
+                        id: null,
+                        title: "No movies available with the selected criteria.",
+                        score: 0,
+                        poster_url: null,
+                        trailer_url: null,
+                        overview: "",
+                        release_date: "",
+                        genres: "",
+                        genre_ids: [],
+                        cast: ""
+                    };
+                }
+                return movieList[Math.floor(Math.random() * movieList.length)];
+            },
+            getRandomMovie() {
+                let selectedMovies = [];
+                if (this.isLoggedIn) {
+                    // Filter based on liked genres if logged in
+                    const likedPreferences = this.movies.filter(movie =>
+                        this.likedMoviesList && this.likedMoviesList.includes(movie.title)
+                    );
+
+                    if (likedPreferences.length > 0) {
+                        const likedGenresNames = new Set();
+                        likedPreferences.forEach(pref => {
+                            if (pref.genres) {
+                                pref.genres.split(', ').forEach(genre => likedGenresNames.add(genre));
+                            }
+                        });
+
+                        if (likedGenresNames.size > 0) {
+                            selectedMovies = this.movies.filter(movie => {
+                                const movieGenresNames = new Set(movie.genres.split(', '));
+                                return [...movieGenresNames].some(g => likedGenresNames.has(g));
+                            });
                         }
-                    } catch (error) {
+                    }
+                }
+
+                if (selectedMovies.length === 0) {
+                    selectedMovies = this.movies; // Fallback to all movies
+                }
+
+                // Apply genre filter if selected
+                if (this.selectedGenres.length > 0) {
+                    selectedMovies = selectedMovies.filter(movie =>
+                        movie.genre_ids.some(gid => this.selectedGenres.includes(gid))
+                    );
+                }
+
+                this.movie = this.getRandomMovieFromList(selectedMovies);
+                this.searchResults = null; // Clear search results
+                this.likedMoviesList = null; // Clear liked movies list
+            },
+            searchMovies() {
+                console.log('searchMovies called');
+                console.log('searchQuery:', this.searchQuery);
+                console.log('movies array:', this.movies);
+
+                if (!this.searchQuery) {
+                    this.searchResults = null;
+                    this.lastSearchQuery = '';
+                    return;
+                }
+
+                this.lastSearchQuery = this.searchQuery;
+                const query = this.searchQuery.toLowerCase();
+                let filteredMovies = this.movies.filter(movie =>
+                    movie.title.toLowerCase().includes(query)
+                );
+
+                if (this.selectedGenres.length > 0) {
+                    filteredMovies = filteredMovies.filter(movie =>
+                        movie.genre_ids.some(gid => this.selectedGenres.includes(gid))
+                    );
+                }
+                console.log('filteredMovies:', filteredMovies);
+                this.searchResults = filteredMovies;
+                this.movie = null; // Clear random movie display
+                this.likedMoviesList = null; // Clear liked movies list
+            },
+            applyGenreFilter() {
+                let filteredMovies = this.movies;
+                if (this.selectedGenres.length > 0) {
+                    filteredMovies = this.movies.filter(movie =>
+                        movie.genre_ids.some(gid => this.selectedGenres.includes(gid))
+                    );
+                }
+                this.movie = this.getRandomMovieFromList(filteredMovies);
+                this.searchResults = null; // Clear search results
+                this.likedMoviesList = null; // Clear liked movies list
+            },
+            checkLoginStatus() {
+                axios.get('/status')
+                    .then(response => {
+                        this.isLoggedIn = response.data.isLoggedIn;
+                    })
+                    .catch(error => {
                         console.error('Error checking login status:', error);
                         this.isLoggedIn = false;
-                        this.username = '';
-                    }
-                },
-                async fetchAllGenres() {
-                    try {
-                        const response = await fetch('/genres');
-                        if (!response.ok) {
-                            throw new Error('Network response was not ok');
-                        }
-                        const data = await response.json();
-                        this.allGenres = data;
-                    } catch (error) {
-                        console.error('Error fetching genres:', error);
-                        this.showToast('Could not load genres.', 'error');
-                    }
-                },
-                applyGenreFilter() {
-                    // When filter is applied, re-fetch random movie or re-run search
-                    if (this.searchResults) {
-                        this.searchMovies(); // Re-run search with new filter
-                    } else {
-                        this.getRandomMovie(); // Get new random movie with filter
-                    }
-                },
-                async getRandomMovie() {
-                    this.error = null;
-                    this.searchResults = null; // Clear search results when getting a random movie
-                    this.likedMoviesList = null; // Clear liked movies list
-
-                    let url = '/random-movie';
-                    if (this.selectedGenres.length > 0) {
-                        url += `?genres=${this.selectedGenres.join(',')}`;
-                    }
-
-                    try {
-                        const response = await fetch(url);
-                        if (!response.ok) {
-                            throw new Error('Network response was not ok');
-                        }
-                        const data = await response.json();
-                        this.movie = data;
-                    } catch (error) {
-                        console.error('Error fetching random movie:', error);
-                        this.error = 'Could not fetch a random movie. Please try again!';
-                    }
-                },
-                async searchMovies() {
-                    if (!this.searchQuery.trim()) {
-                        this.searchResults = [];
-                        this.lastSearchQuery = this.searchQuery;
-                        this.movie = null; // Clear random movie when searching
-                        this.likedMoviesList = null; // Clear liked movies list
-                        return;
-                    }
-
-                    this.error = null;
-                    this.movie = null; // Clear random movie when searching
-                    this.likedMoviesList = null; // Clear liked movies list
-                    this.lastSearchQuery = this.searchQuery;
-
-                    let url = `/search-movie?query=${encodeURIComponent(this.searchQuery)}`;
-                    if (this.selectedGenres.length > 0) {
-                        url += `&genres=${this.selectedGenres.join(',')}`;
-                    }
-
-                    try {
-                        const response = await fetch(url);
-                        if (!response.ok) {
-                            throw new Error('Network response was not ok');
-                        }
-                        const data = await response.json();
-                        this.searchResults = data;
-                    } catch (error) {
-                        console.error('Error searching movies:', error);
-                        this.error = 'Could not perform search. Please try again!';
-                    }
-                },
-                async setPreference(movieTitle, tmdbId, genres, preference) {
-                    if (!this.isLoggedIn) {
-                        this.showToast('Please log in to set movie preferences.', 'error');
-                        return;
-                    }
-                    console.log('Sending preference:', { title: movieTitle, id: tmdbId, genres: genres, preference: preference });
-                    try {
-                        const response = await fetch('/movie-preference', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({ title: movieTitle, id: tmdbId, genres: genres, preference: preference }),
-                        });
-                        const data = await response.json();
-                        if (response.ok) {
-                            this.showToast(data.message, 'success');
-                            this.getRandomMovie(); // Request a new random movie
-                        } else {
-                            this.showToast('Error: ' + data.error, 'error');
-                        }
-                    } catch (error) {
-                        console.error('Error setting preference:', error);
-                        this.showToast('Could not set preference. Please try again.', 'error');
-                    }
-                },
-                async getLikedMovies() {
-                    if (!this.isLoggedIn) {
-                        this.showToast('Please log in to view your liked movies.', 'error');
-                        return;
-                    }
-                    this.error = null;
-                    this.movie = null; // Clear random movie
-                    this.searchResults = null; // Clear search results
-                    try {
-                        const response = await fetch('/liked-movies');
-                        if (!response.ok) {
-                            throw new Error('Network response was not ok');
-                        }
-                        const data = await response.json();
-                        this.likedMoviesList = data;
-                    } catch (error) {
-                        console.error('Error fetching liked movies:', error);
-                        this.error = 'Could not fetch liked movies. Please try again!';
-                    }
+                    });
+            },
+            setPreference(title, id, genres, preference) {
+                if (!this.isLoggedIn) {
+                    this.showToast('Please log in to set your preferences.', 'error');
+                    return;
                 }
+                axios.post('/movie-preference', {
+                        title: title,
+                        id: id,
+                        genres: genres,
+                        preference: preference
+                    })
+                    .then(response => {
+                        this.showToast(response.data.message, 'success');
+                        this.getLikedMovies(); // Refresh liked movies after setting preference
+                    })
+                    .catch(error => {
+                        console.error('Error setting preference:', error);
+                        this.showToast('Error setting preference.', 'error');
+                    });
+            },
+            getLikedMovies() {
+                if (!this.isLoggedIn) {
+                    this.likedMoviesList = [];
+                    return;
+                }
+                axios.get('/liked-movies')
+                    .then(response => {
+                        this.likedMoviesList = response.data;
+                        this.movie = null; // Clear random movie display
+                        this.searchResults = null; // Clear search results
+                    })
+                    .catch(error => {
+                        console.error('Error fetching liked movies:', error);
+                        this.showToast('Error fetching liked movies.', 'error');
+                        this.likedMoviesList = [];
+                    });
+            },
+            showToast(message, type) {
+                this.toast.message = message;
+                this.toast.type = type;
+                this.toast.show = true;
+                setTimeout(() => {
+                    this.toast.show = false;
+                }, 3000);
             }
-        }).mount('#app') {# Mount to body #}
-    </script>
-</body>
-    <!-- Footer -->
-    <footer class="bg-gray-800 p-4 text-center text-gray-400 text-sm shadow-inner mt-8">
-        <div class="container mx-auto">
-            &copy; 2023 Netflix Recommender. All rights reserved.
-        </div>
-    </footer>
-</html>
+        }
+    });
+</script>
+{% endblock %}

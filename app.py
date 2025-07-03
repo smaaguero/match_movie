@@ -2,9 +2,19 @@ from flask import Flask, render_template, jsonify, request, redirect, url_for, f
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+from functools import wraps
 import random
 import requests
 import os
+
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated or not current_user.is_admin:
+            flash('Forbidden: You do not have administrative access.', 'danger')
+            return redirect(url_for('index'))
+        return f(*args, **kwargs)
+    return decorated_function
 
 app = Flask(__name__)
 
@@ -37,13 +47,38 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(20), unique=True, nullable=False)
     password_hash = db.Column(db.String(128), nullable=False)
+    is_admin = db.Column(db.Boolean, default=False) # New: Admin flag
     preferences = db.relationship('UserMoviePreference', backref='user', lazy=True)
+
+    # Friends relationship
+    friends_a = db.relationship('Friendship', foreign_keys='Friendship.user_id', backref='user_a', lazy='dynamic')
+    friends_b = db.relationship('Friendship', foreign_keys='Friendship.friend_id', backref='user_b', lazy='dynamic')
+
+    def get_friends(self):
+        # Get friends where current user is user_id
+        as_user_a = Friendship.query.filter_by(user_id=self.id).all()
+        # Get friends where current user is friend_id
+        as_user_b = Friendship.query.filter_by(friend_id=self.id).all()
+
+        friends = []
+        for friendship in as_user_a:
+            friends.append(db.session.get(User, friendship.friend_id))
+        for friendship in as_user_b:
+            friends.append(db.session.get(User, friendship.user_id))
+        return friends
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+class Friendship(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    friend_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+
+    __table_args__ = (db.UniqueConstraint('user_id', 'friend_id', name='_user_friend_uc'),)
 
 # User Movie Preference Model
 class UserMoviePreference(db.Model):
@@ -54,9 +89,22 @@ class UserMoviePreference(db.Model):
     genres = db.Column(db.String(255), nullable=True) # New: Store genres as string
     preference = db.Column(db.Boolean, nullable=False) # True for liked, False for disliked
 
+class Movie(db.Model):
+    id = db.Column(db.Integer, primary_key=True) # Our internal ID
+    tmdb_id = db.Column(db.Integer, unique=True, nullable=False) # TMDb ID
+    title = db.Column(db.String(255), nullable=False)
+    score = db.Column(db.Float, nullable=True)
+    poster_url = db.Column(db.String(255), nullable=True)
+    trailer_url = db.Column(db.String(255), nullable=True)
+    overview = db.Column(db.Text, nullable=True)
+    release_date = db.Column(db.String(50), nullable=True)
+    genres = db.Column(db.String(255), nullable=True) # Comma-separated genre names
+    genre_ids = db.Column(db.String(255), nullable=True) # Comma-separated genre IDs
+    cast = db.Column(db.String(500), nullable=True) # Comma-separated cast names
+
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    return db.session.get(User, int(user_id))
 
 @app.route('/genres')
 def get_genres():
@@ -74,7 +122,6 @@ def fetch_genres():
         data = response.json()
         if data and 'genres' in data:
             app.config['GENRES_MAP'] = {genre['id']: genre['name'] for genre in data['genres']}
-            print(f"DEBUG: Successfully fetched {len(app.config['GENRES_MAP'])} genres.")
         else:
             print(f"DEBUG: TMDb genres API response missing 'genres' key or is empty. Response: {data}")
     except requests.exceptions.RequestException as e:
@@ -115,7 +162,6 @@ def get_movie_cast(movie_id):
         if data and 'cast' in data:
             for member in data['cast'][:5]: # Get top 5 cast members
                 cast.append(member['name'])
-            print(f"DEBUG: Successfully fetched cast for movie {movie_id}: {cast}")
         else:
             print(f"DEBUG: TMDb credits API response for movie {movie_id} missing 'cast' key or is empty. Response: {data}")
     except requests.exceptions.RequestException as e:
@@ -126,35 +172,40 @@ def get_movie_cast(movie_id):
         print(f"ERROR: Failed to decode JSON from TMDb credits API for movie {movie_id}. Error: {e}")
     return ", ".join(cast)
 
-def fetch_top_rated_movies(num_pages=5):
-    # global m_db # No longer needed as global
-    movies_list = []
-    for page in range(1, num_pages + 1):
+def fetch_top_rated_movies(start_page=1, end_page=1):
+    new_movies_count = 0
+    for page in range(start_page, end_page + 1):
         url = f"https://api.themoviedb.org/3/movie/top_rated?api_key={TMDB_API_KEY}&language=en-US&page={page}"
         try:
             response = requests.get(url)
             response.raise_for_status()
             data = response.json()
             if data and 'results' in data:
-                for movie in data['results']:
-                    if movie.get('vote_average') and movie.get('vote_count', 0) > 50: # Filter for reasonable score and votes
-                        trailer_url = get_movie_trailer(movie['id'])
-                        cast = get_movie_cast(movie['id'])
-                        genres_map = app.config.get('GENRES_MAP', {})
-                        genres_names = [genres_map.get(gid) for gid in movie.get('genre_ids', []) if gid in genres_map]
-                        
-                        movies_list.append({
-                            "id": movie['id'], # New: Store TMDb ID
-                            "title": movie['title'],
-                            "score": movie['vote_average'],
-                            "poster_url": TMDB_IMAGE_BASE_URL + movie['poster_path'] if movie.get('poster_path') else None,
-                            "trailer_url": trailer_url,
-                            "overview": movie.get('overview', 'No overview available.'),
-                            "release_date": movie.get('release_date', 'N/A'),
-                            "genres": ", ".join(genres_names),
-                            "genre_ids": movie.get('genre_ids', []), # Store genre IDs
-                            "cast": cast
-                        })
+                for movie_data in data['results']:
+                    if movie_data.get('vote_average') and movie_data.get('vote_count', 0) > 50:
+                        # Check if movie already exists in DB
+                        existing_movie = Movie.query.filter_by(tmdb_id=movie_data['id']).first()
+                        if not existing_movie:
+                            trailer_url = get_movie_trailer(movie_data['id'])
+                            cast = get_movie_cast(movie_data['id'])
+                            genres_map = app.config.get('GENRES_MAP', {})
+                            genres_names = [genres_map.get(gid) for gid in movie_data.get('genre_ids', []) if gid in genres_map]
+                            
+                            new_movie = Movie(
+                                tmdb_id=movie_data['id'],
+                                title=movie_data['title'],
+                                score=movie_data['vote_average'],
+                                poster_url=TMDB_IMAGE_BASE_URL + movie_data['poster_path'] if movie_data.get('poster_path') else None,
+                                trailer_url=trailer_url,
+                                overview=movie_data.get('overview', 'No overview available.'),
+                                release_date=movie_data.get('release_date', 'N/A'),
+                                genres=", ".join(genres_names),
+                                genre_ids=", ".join(map(str, movie_data.get('genre_ids', []))),
+                                cast=cast
+                            )
+                            db.session.add(new_movie)
+                            new_movies_count += 1
+                db.session.commit()
             else:
                 print(f"DEBUG: TMDb top rated movies API response for page {page} missing 'results' key or is empty. Response: {data}")
         except requests.exceptions.RequestException as e:
@@ -163,29 +214,80 @@ def fetch_top_rated_movies(num_pages=5):
                 print(f"ERROR: TMDb top rated movies API response status: {e.response.status_code}, content: {e.response.text}")
         except ValueError as e:
             print(f"ERROR: Failed to decode JSON from TMDb top rated movies API (page {page}). Error: {e}")
-    app.config['MOVIE_DB'] = movies_list
-    print(f"DEBUG: Fetched {len(app.config['MOVIE_DB'])} movies from TMDb.")
+    print(f"DEBUG: Fetched and added {new_movies_count} new movies to the database.")
+    return new_movies_count
 
 with app.app_context():
     db.create_all()
     fetch_genres()
-    fetch_top_rated_movies()
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
+
+@app.route('/api/movies')
+def api_movies():
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    offset = (page - 1) * per_page
+
+    movies_query = Movie.query.offset(offset).limit(per_page)
+    movies_from_db = movies_query.all()
+
+    if not movies_from_db:
+        # If no movies in DB for this page, try to fetch from TMDb
+        # We'll fetch one page at a time from TMDb, corresponding to the requested page number
+        # This assumes TMDb pages align roughly with our internal pagination
+        print(f"DEBUG: No movies found in DB for page {page}. Attempting to fetch from TMDb (page {page}).")
+        fetch_top_rated_movies(start_page=page, end_page=page)
+        movies_from_db = movies_query.all() # Try fetching again after potential new data
+
+    movies_data = []
+    for movie in movies_from_db:
+        movies_data.append({
+            "id": movie.tmdb_id,
+            "title": movie.title,
+            "score": movie.score,
+            "poster_url": movie.poster_url,
+            "trailer_url": movie.trailer_url,
+            "overview": movie.overview,
+            "release_date": movie.release_date,
+            "genres": movie.genres,
+            "genre_ids": [int(gid) for gid in movie.genre_ids.split(',')] if movie.genre_ids else [],
+            "cast": movie.cast
+        })
+    return jsonify(movies_data)
+
+@app.route('/api/fetch_new_movies', methods=['POST'])
+def api_fetch_new_movies():
+    num_pages = int(request.json.get('num_pages', 1))
+    start_page = int(request.json.get('start_page', 1))
+    
+    # Fetch movies from TMDb and save to DB
+    new_movies_count = fetch_top_rated_movies(start_page=start_page, end_page=start_page + num_pages - 1)
+    
+    return jsonify({"message": f"Fetched and added {new_movies_count} new movies to the database.", "new_movies_count": new_movies_count})
 
 @app.route('/')
 def index():
     # Pass flash messages to the template
     flashed_messages = get_flashed_messages(with_categories=True)
-    return render_template('index.html', flashed_messages=flashed_messages)
+    
+    # Get genres from app.config
+    genres_map = app.config.get('GENRES_MAP', {})
+    
+    # Convert genres_map to a list of dictionaries for easier iteration in Jinja2
+    genres = [{'id': gid, 'name': gname} for gid, gname in genres_map.items()]
 
-@app.route('/status')
-def status():
-    if current_user.is_authenticated:
-        return jsonify({'isLoggedIn': True, 'username': current_user.username})
-    else:
-        return jsonify({'isLoggedIn': False, 'username': None})
+    return render_template('index.html', 
+                           flashed_messages=flashed_messages, 
+                           genres=genres)
+
+with app.app_context():
+    db.create_all()
+    fetch_genres()
+
+if __name__ == '__main__':
+    app.run(debug=True, port=5001)
 
 @app.route('/random-movie')
 def random_movie():
@@ -372,3 +474,108 @@ def liked_movies():
     liked_movie_titles = [p.movie_title for p in current_user.preferences if p.preference == True]
     # For now, we'll just return the titles. We could fetch more details from TMDb if needed.
     return jsonify(liked_movie_titles)
+
+@app.route('/friends')
+@login_required
+def friends():
+    all_users = User.query.filter(User.id != current_user.id).all()
+    friends = current_user.get_friends()
+    non_friends = [user for user in all_users if user not in friends]
+    return render_template('friends.html', friends=friends, non_friends=non_friends)
+
+@app.route('/add_friend', methods=['POST'])
+@login_required
+def add_friend():
+    friend_id = request.form.get('friend_id')
+    friend = User.query.get(friend_id)
+
+    if not friend:
+        flash('User not found.', 'danger')
+        return redirect(url_for('friends'))
+
+    if friend.id == current_user.id:
+        flash('You cannot add yourself as a friend.', 'danger')
+        return redirect(url_for('friends'))
+
+    # Check if friendship already exists (either way)
+    existing_friendship = Friendship.query.filter(
+        ((Friendship.user_id == current_user.id) & (Friendship.friend_id == friend.id)) |
+        ((Friendship.user_id == friend.id) & (Friendship.friend_id == current_user.id))
+    ).first()
+
+    if existing_friendship:
+        flash('You are already friends with this user.', 'warning')
+        return redirect(url_for('friends'))
+
+    new_friendship = Friendship(user_id=current_user.id, friend_id=friend.id)
+    db.session.add(new_friendship)
+    db.session.commit()
+    flash(f'You are now friends with {friend.username}!', 'success')
+    return redirect(url_for('friends'))
+
+@app.route('/remove_friend', methods=['POST'])
+@login_required
+def remove_friend():
+    friend_id = request.form.get('friend_id')
+    friend = User.query.get(friend_id)
+
+    if not friend:
+        flash('User not found.', 'danger')
+        return redirect(url_for('friends'))
+
+    friendship = Friendship.query.filter(
+        ((Friendship.user_id == current_user.id) & (Friendship.friend_id == friend.id)) |
+        ((Friendship.user_id == friend.id) & (Friendship.friend_id == current_user.id))
+    ).first()
+
+    if friendship:
+        db.session.delete(friendship)
+        db.session.commit()
+        flash(f'You are no longer friends with {friend.username}.', 'info')
+    else:
+        flash('You are not friends with this user.', 'warning')
+    
+    return redirect(url_for('friends'))
+
+@app.route('/friends/shared_movies/<int:friend_id>')
+@login_required
+def shared_movies(friend_id):
+    friend = User.query.get_or_404(friend_id)
+
+    if not friend:
+        flash('Friend not found.', 'danger')
+        return redirect(url_for('friends'))
+
+    # Check if they are actually friends
+    is_friend = Friendship.query.filter(
+        ((Friendship.user_id == current_user.id) & (Friendship.friend_id == friend.id)) |
+        ((Friendship.user_id == friend.id) & (Friendship.friend_id == current_user.id))
+    ).first()
+
+    if not is_friend:
+        flash('You are not friends with this user.', 'danger')
+        return redirect(url_for('friends'))
+
+    current_user_liked_movies = {p.movie_title for p in current_user.preferences if p.preference == True}
+    friend_liked_movies = {p.movie_title for p in friend.preferences if p.preference == True}
+
+    shared_liked_movie_titles = list(current_user_liked_movies.intersection(friend_liked_movies))
+
+    # Optionally, fetch more details for these movies from TMDb if needed
+    # For now, just returning titles
+    return render_template('shared_movies.html', friend=friend, shared_liked_movie_titles=shared_liked_movie_titles)
+
+@app.route('/load_movies', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def load_movies():
+    total_movies = Movie.query.count()
+    if request.method == 'POST':
+        num_pages = request.form.get('num_pages', type=int)
+        if num_pages and num_pages > 0:
+            new_movies_count = fetch_top_rated_movies(start_page=1, end_page=num_pages) # Start from page 1 for simplicity
+            flash(f'Successfully fetched and added {new_movies_count} new movies.', 'success')
+        else:
+            flash('Please enter a valid number of pages.', 'danger')
+        return redirect(url_for('load_movies'))
+    return render_template('load_movies.html', total_movies=total_movies)

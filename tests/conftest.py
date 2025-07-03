@@ -13,6 +13,7 @@ def client(mock_tmdb):
     app.config['TESTING'] = True
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
     app.config['SECRET_KEY'] = 'test_secret_key'
+    app.template_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..' , 'templates') # Set template folder for tests
     os.environ['TMDB_API_KEY'] = 'test_tmdb_api_key'
 
     with app.test_client() as client:

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}Friends{% endblock %}
+
+{% block content %}
+<div class="bg-gray-800 rounded-lg shadow-2xl p-8 max-w-3xl w-full border border-gray-700 mx-auto">
+    <h1 class="text-3xl font-bold text-center text-red-600 mb-8">Your Friends</h1>
+
+    <h2 class="text-2xl font-semibold text-gray-100 mb-4">Current Friends</h2>
+    {% if friends %}
+        <ul class="space-y-4 mb-8">
+            {% for friend in friends %}
+                <li class="bg-gray-700 p-4 rounded-lg shadow flex items-center justify-between">
+                    <span class="text-lg text-gray-100">{{ friend.username }}</span>
+                    <div class="flex space-x-3">
+                        <form action="{{ url_for('remove_friend') }}" method="POST" class="inline-block">
+                            <input type="hidden" name="friend_id" value="{{ friend.id }}">
+                            <button type="submit" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors text-sm font-semibold">
+                                Remove Friend
+                            </button>
+                        </form>
+                        <a href="{{ url_for('shared_movies', friend_id=friend.id) }}" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-semibold">
+                            View Shared Movies
+                        </a>
+                    </div>
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p class="text-gray-400 text-lg text-center mb-8">You don't have any friends yet.</p>
+    {% endif %}
+
+    <h2 class="text-2xl font-semibold text-gray-100 mb-4">Add New Friend</h2>
+    <form action="{{ url_for('add_friend') }}" method="POST" class="space-y-4">
+        <div class="form-group">
+            <label for="friend_username" class="block text-gray-300 text-sm font-semibold mb-2">Friend's Username:</label>
+            <select name="friend_id" id="friend_username" class="shadow-inner appearance-none border border-gray-700 rounded w-full py-3 px-4 bg-gray-700 text-gray-100 leading-tight focus:outline-none focus:ring-2 focus:ring-red-600">
+                {% for user in non_friends %}
+                    <option value="{{ user.id }}">{{ user.username }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="flex justify-center">
+            <button type="submit" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-lg focus:outline-none focus:shadow-outline text-lg">
+                Add Friend
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}
