@@ -1,0 +1,52 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+*.pyd
+*.pyo
+*.egg-info/
+.eggs/
+
+# Distribution / packaging
+.Python
+build/
+dist/
+wheels/
+*.egg
+
+# Environments
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Editors
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+.Trashes
+Thumbs.db
+
+# Testing
+.pytest_cache/
+.coverage
+.coverage.*
+.cache/
+nosetests.xml
+pytest.ini
+
+# Database
+*.sqlite3
+*.db
+instance/
+
+# Logs
+*.log
+logs/
+
+# Specific to this project
+ml-100k/
+ml-100k.zip

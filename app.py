@@ -29,8 +29,8 @@ TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w500/"
 TMDB_YOUTUBE_BASE_URL = "https://www.youtube.com/embed/"
 
 # Global variables for movie data and genres
-m_db = []
-genres_map = {}
+# Global variables for movie data and genres
+# 
 
 # User Model
 class User(UserMixin, db.Model):
@@ -61,72 +61,118 @@ def load_user(user_id):
 @app.route('/genres')
 def get_genres():
     genres_list = []
+    genres_map = app.config.get('GENRES_MAP', {})
     for gid, gname in genres_map.items():
         genres_list.append({'id': gid, 'name': gname})
     return jsonify(genres_list)
 
 def fetch_genres():
-    global genres_map
     genres_url = f"https://api.themoviedb.org/3/genre/movie/list?api_key={TMDB_API_KEY}&language=en-US"
-    response = requests.get(genres_url)
-    data = response.json()
-    if data and 'genres' in data:
-        genres_map = {genre['id']: genre['name'] for genre in data['genres']}
+    try:
+        response = requests.get(genres_url)
+        response.raise_for_status() # Raise an exception for HTTP errors
+        data = response.json()
+        if data and 'genres' in data:
+            app.config['GENRES_MAP'] = {genre['id']: genre['name'] for genre in data['genres']}
+            print(f"DEBUG: Successfully fetched {len(app.config['GENRES_MAP'])} genres.")
+        else:
+            print(f"DEBUG: TMDb genres API response missing 'genres' key or is empty. Response: {data}")
+    except requests.exceptions.RequestException as e:
+        print(f"ERROR: Failed to fetch genres from TMDb. Error: {e}")
+        if hasattr(e, 'response') and e.response is not None:
+            print(f"ERROR: TMDb genres API response status: {e.response.status_code}, content: {e.response.text}")
+    except ValueError as e: # Handles JSON decoding errors
+        print(f"ERROR: Failed to decode JSON from TMDb genres API. Error: {e}")
 
 def get_movie_trailer(movie_id):
     videos_url = f"https://api.themoviedb.org/3/movie/{movie_id}/videos?api_key={TMDB_API_KEY}&language=en-US"
-    response = requests.get(videos_url)
-    data = response.json()
-    if data['results']:
-        for video in data['results']:
-            if video['site'] == 'YouTube' and video['type'] == 'Trailer':
-                return TMDB_YOUTUBE_BASE_URL + video['key']
+    try:
+        response = requests.get(videos_url)
+        response.raise_for_status()
+        data = response.json()
+        if data and 'results' in data:
+            for video in data['results']:
+                if video['site'] == 'YouTube' and video['type'] == 'Trailer':
+                    return TMDB_YOUTUBE_BASE_URL + video['key']
+            print(f"DEBUG: No trailer found for movie {movie_id} in TMDb response.")
+        else:
+            print(f"DEBUG: TMDb videos API response for movie {movie_id} missing 'results' key or is empty. Response: {data}")
+    except requests.exceptions.RequestException as e:
+        print(f"ERROR: Failed to fetch trailer for movie {movie_id}. Error: {e}")
+        if hasattr(e, 'response') and e.response is not None:
+            print(f"ERROR: TMDb videos API response status: {e.response.status_code}, content: {e.response.text}")
+    except ValueError as e:
+        print(f"ERROR: Failed to decode JSON from TMDb videos API for movie {movie_id}. Error: {e}")
     return None
 
 def get_movie_cast(movie_id):
     credits_url = f"https://api.themoviedb.org/3/movie/{movie_id}/credits?api_key={TMDB_API_KEY}&language=en-US"
-    response = requests.get(credits_url)
-    data = response.json()
-    cast = []
-    if data and 'cast' in data:
-        for member in data['cast'][:5]: # Get top 5 cast members
-            cast.append(member['name'])
+    try:
+        response = requests.get(credits_url)
+        response.raise_for_status()
+        data = response.json()
+        cast = []
+        if data and 'cast' in data:
+            for member in data['cast'][:5]: # Get top 5 cast members
+                cast.append(member['name'])
+            print(f"DEBUG: Successfully fetched cast for movie {movie_id}: {cast}")
+        else:
+            print(f"DEBUG: TMDb credits API response for movie {movie_id} missing 'cast' key or is empty. Response: {data}")
+    except requests.exceptions.RequestException as e:
+        print(f"ERROR: Failed to fetch cast for movie {movie_id}. Error: {e}")
+        if hasattr(e, 'response') and e.response is not None:
+            print(f"ERROR: TMDb credits API response status: {e.response.status_code}, content: {e.response.text}")
+    except ValueError as e:
+        print(f"ERROR: Failed to decode JSON from TMDb credits API for movie {movie_id}. Error: {e}")
     return ", ".join(cast)
 
 def fetch_top_rated_movies(num_pages=5):
-    global m_db
-    m_db = [] # Clear existing movies
+    # global m_db # No longer needed as global
+    movies_list = []
     for page in range(1, num_pages + 1):
         url = f"https://api.themoviedb.org/3/movie/top_rated?api_key={TMDB_API_KEY}&language=en-US&page={page}"
-        response = requests.get(url)
-        data = response.json()
-        if data['results']:
-            for movie in data['results']:
-                if movie.get('vote_average') and movie.get('vote_count', 0) > 50: # Filter for reasonable score and votes
-                    trailer_url = get_movie_trailer(movie['id'])
-                    cast = get_movie_cast(movie['id'])
-                    genres_names = [genres_map.get(gid) for gid in movie.get('genre_ids', []) if gid in genres_map]
-                    
-                    m_db.append({
-                        "id": movie['id'], # New: Store TMDb ID
-                        "title": movie['title'],
-                        "score": movie['vote_average'],
-                        "poster_url": TMDB_IMAGE_BASE_URL + movie['poster_path'] if movie.get('poster_path') else None,
-                        "trailer_url": trailer_url,
-                        "overview": movie.get('overview', 'No overview available.'),
-                        "release_date": movie.get('release_date', 'N/A'),
-                        "genres": ", ".join(genres_names),
-                        "genre_ids": movie.get('genre_ids', []), # Store genre IDs
-                        "cast": cast
-                    })
-    print(f"Fetched {len(m_db)} movies from TMDb.")
+        try:
+            response = requests.get(url)
+            response.raise_for_status()
+            data = response.json()
+            if data and 'results' in data:
+                for movie in data['results']:
+                    if movie.get('vote_average') and movie.get('vote_count', 0) > 50: # Filter for reasonable score and votes
+                        trailer_url = get_movie_trailer(movie['id'])
+                        cast = get_movie_cast(movie['id'])
+                        genres_map = app.config.get('GENRES_MAP', {})
+                        genres_names = [genres_map.get(gid) for gid in movie.get('genre_ids', []) if gid in genres_map]
+                        
+                        movies_list.append({
+                            "id": movie['id'], # New: Store TMDb ID
+                            "title": movie['title'],
+                            "score": movie['vote_average'],
+                            "poster_url": TMDB_IMAGE_BASE_URL + movie['poster_path'] if movie.get('poster_path') else None,
+                            "trailer_url": trailer_url,
+                            "overview": movie.get('overview', 'No overview available.'),
+                            "release_date": movie.get('release_date', 'N/A'),
+                            "genres": ", ".join(genres_names),
+                            "genre_ids": movie.get('genre_ids', []), # Store genre IDs
+                            "cast": cast
+                        })
+            else:
+                print(f"DEBUG: TMDb top rated movies API response for page {page} missing 'results' key or is empty. Response: {data}")
+        except requests.exceptions.RequestException as e:
+            print(f"ERROR: Failed to fetch top rated movies from TMDb (page {page}). Error: {e}")
+            if hasattr(e, 'response') and e.response is not None:
+                print(f"ERROR: TMDb top rated movies API response status: {e.response.status_code}, content: {e.response.text}")
+        except ValueError as e:
+            print(f"ERROR: Failed to decode JSON from TMDb top rated movies API (page {page}). Error: {e}")
+    app.config['MOVIE_DB'] = movies_list
+    print(f"DEBUG: Fetched {len(app.config['MOVIE_DB'])} movies from TMDb.")
 
-# Fetch movies on startup
 with app.app_context():
-    # db.drop_all() # DANGER: Only for development, drops all tables
     db.create_all()
     fetch_genres()
     fetch_top_rated_movies()
+
+if __name__ == '__main__':
+    app.run(debug=True, port=5001)
 
 @app.route('/')
 def index():
@@ -149,6 +195,8 @@ def random_movie():
         selected_genre_ids = [int(x) for x in selected_genres_str.split(',')]
 
     selected_movies = []
+    movie_db = app.config.get('MOVIE_DB', [])
+
     if current_user.is_authenticated:
         liked_preferences = UserMoviePreference.query.filter_by(user_id=current_user.id, preference=True).all()
         if liked_preferences:
@@ -159,7 +207,7 @@ def random_movie():
             
             if liked_genres_names:
                 # Prioritize movies with liked genres
-                for movie in m_db:
+                for movie in movie_db:
                     movie_genres_names = set(movie['genres'].split(', '))
                     if any(g in liked_genres_names for g in movie_genres_names):
                         # Apply additional genre filter if selected
@@ -169,11 +217,11 @@ def random_movie():
     if not selected_movies:
         # Fallback to all movies if no liked genres or no matches, applying selected genre filter
         if selected_genre_ids:
-            for movie in m_db:
+            for movie in movie_db:
                 if any(gid in selected_genre_ids for gid in movie.get('genre_ids', [])):
                     selected_movies.append(movie)
         else:
-            selected_movies = m_db
+            selected_movies = movie_db
 
     if selected_movies:
         random_movie_data = random.choice(selected_movies)
@@ -220,8 +268,9 @@ def search_movie():
     data = response.json()
 
     results = []
-    if data['results']:
+    if data and 'results' in data:
         for movie in data['results']:
+            genres_map = app.config.get('GENRES_MAP', {})
             genres_names = [genres_map.get(gid) for gid in movie.get('genre_ids', []) if gid in genres_map]
             
             # Apply genre filter to search results
@@ -323,6 +372,3 @@ def liked_movies():
     liked_movie_titles = [p.movie_title for p in current_user.preferences if p.preference == True]
     # For now, we'll just return the titles. We could fetch more details from TMDb if needed.
     return jsonify(liked_movie_titles)
-
-if __name__ == 'main':
-    app.run(debug=True, port=5001)
