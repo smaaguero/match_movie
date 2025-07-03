@@ -18,15 +18,25 @@ def admin_required(f):
 
 app = Flask(__name__)
 
-# --- Configuración de Claves desde Variables de Entorno ---
-app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY')
-TMDB_API_KEY = os.environ.get('TMDB_API_KEY')
+# --- Configuración de Claves desde Docker Secrets o Archivos ---
+def get_secret(secret_name):
+    try:
+        # La ruta estándar para Docker Secrets
+        with open(f'/run/secrets/{secret_name}', 'r') as secret_file:
+            return secret_file.read().strip()
+    except IOError:
+        # Fallback para desarrollo local sin Docker Compose (opcional)
+        # o si el secret no se encuentra
+        return os.environ.get(secret_name.upper())
+
+app.config['SECRET_KEY'] = get_secret('flask_secret_key')
+TMDB_API_KEY = get_secret('tmdb_api_key')
 
 # Verificar que las claves estén configuradas
 if not app.config['SECRET_KEY']:
-    raise RuntimeError("FLASK_SECRET_KEY not set in environment variables. Please set it.")
+    raise RuntimeError("FLASK_SECRET_KEY could not be found in Docker Secrets or environment variables.")
 if not TMDB_API_KEY:
-    raise RuntimeError("TMDB_API_KEY not set in environment variables. Please set it.")
+    raise RuntimeError("TMDB_API_KEY could not be found in Docker Secrets or environment variables.")
 # ---------------------------------------------------------
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'

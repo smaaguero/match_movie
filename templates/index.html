@@ -105,12 +105,7 @@
                 </svg>
                 <span>Get Random Recommendation</span>
             </button>
-            <button v-if="{% raw %}hasMoreMovies{% endraw %}" @click="{% raw %}fetchMovies{% endraw %}" class="px-10 py-5 bg-blue-600 text-white rounded-lg shadow-xl hover:bg-blue-700 transition-colors text-2xl font-bold flex items-center justify-center mx-auto space-x-4 mt-4">
-                <span>Load More Movies</span>
-            </button>
-            <button @click="{% raw %}fetchNewMovies{% endraw %}" class="px-10 py-5 bg-purple-600 text-white rounded-lg shadow-xl hover:bg-purple-700 transition-colors text-2xl font-bold flex items-center justify-center mx-auto space-x-4 mt-4">
-                <span>Fetch New Movies from TMDb</span>
-            </button>
+            
         </div>
     </div>
 </main>

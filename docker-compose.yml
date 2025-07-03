@@ -1,0 +1,17 @@
+version: '3.9'
+
+services:
+  web:
+    build: .
+    container_name: movie_recommender_app
+    ports:
+      - "5001:5001"
+    secrets:
+      - flask_secret_key
+      - tmdb_api_key
+
+secrets:
+  flask_secret_key:
+    file: ./flask_secret.txt
+  tmdb_api_key:
+    file: ./tmdb_api_key.txt

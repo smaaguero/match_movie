@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Match Movie{% endblock %}</title>
+    <link rel="icon" href="{{ url_for('static', filename='img/logo.jpg') }}" type="image/jpeg">
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Custom CSS (for minimal overrides or specific elements) -->
@@ -13,7 +14,10 @@
     <!-- Header -->
     <header class="bg-gray-800 p-4 shadow-md">
         <div class="container mx-auto flex justify-between items-center">
-            <a href="/" class="text-red-600 text-3xl font-bold tracking-wide">MATCH MOVIE</a>
+            <a href="/" class="flex items-center space-x-2">
+                <img src="{{ url_for('static', filename='img/logo.jpg') }}" alt="Match Movie Logo" class="h-10">
+                <span class="text-red-600 text-3xl font-bold tracking-wide">MATCH MOVIE</span>
+            </a>
             <nav class="space-x-4">
                 <a href="/" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors text-base font-semibold">Home</a>
                 {% if current_user.is_authenticated %}
