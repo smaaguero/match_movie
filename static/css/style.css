@@ -1,0 +1,14 @@
+/* Custom CSS for minimal overrides or specific elements not covered by Tailwind */
+
+/* Ensure images within movie cards scale correctly */
+.movie-card img {
+    max-width: 100%;
+    height: auto;
+}
+
+/* Adjustments for the main movie poster */
+.movie-poster {
+    max-width: 100%;
+    height: auto;
+    object-fit: contain; /* Ensures the whole image is visible */
+}
