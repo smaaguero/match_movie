@@ -230,11 +230,22 @@ def fetch_top_rated_movies(start_page=1, end_page=1):
     print(f"DEBUG: Fetched and added {new_movies_count} new movies to the database.")
     return new_movies_count
 
-with app.app_context():
-    db.create_all()
-    fetch_genres()
+def init_db():
+    with app.app_context():
+        db.create_all()
+        fetch_genres()
+
+        # Create admin user if not exists
+        admin_user_name = os.environ.get('ADMIN_USER')
+        admin_password = os.environ.get('ADMIN_PASSWORD')
+        if admin_user_name and admin_password and not User.query.filter_by(username=admin_user_name).first():
+            admin_user = User(username=admin_user_name, is_admin=True)
+            admin_user.set_password(admin_password)
+            db.session.add(admin_user)
+            db.session.commit()
 
 if __name__ == '__main__':
+    init_db()
     app.run(debug=True, port=5001)
 
 @app.route('/api/movies')
@@ -287,18 +298,7 @@ def index():
                            flashed_messages=flashed_messages, 
                            genres=genres)
 
-with app.app_context():
-    db.create_all()
-    fetch_genres()
 
-    # Create admin user if not exists
-    admin_user_name = os.environ.get('ADMIN_USER')
-    admin_password = os.environ.get('ADMIN_PASSWORD')
-    if not User.query.filter_by(username=admin_user_name).first():
-        admin_user = User(username=admin_user_name, is_admin=True)
-        admin_user.set_password(admin_password)
-        db.session.add(admin_user)
-        db.session.commit()
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
