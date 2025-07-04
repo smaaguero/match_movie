@@ -4,11 +4,14 @@ FROM python:3.11-slim
 # Establece el directorio de trabajo en /app
 WORKDIR /app
 
-# Copia el archivo de requerimientos al contenedor
-COPY requirements.txt .
+# Instala poetry
+RUN pip install poetry
 
-# Instala las dependencias
-RUN pip install --no-cache-dir -r requirements.txt
+# Copia los archivos de dependencias de poetry
+COPY pyproject.toml poetry.lock* ./
+
+# Instala las dependencias del proyecto con poetry
+RUN poetry config virtualenvs.create false && poetry install --without dev --no-root
 
 # Copia el resto de los archivos de la aplicación al contenedor
 COPY . .
