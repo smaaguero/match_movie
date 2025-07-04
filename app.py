@@ -6,6 +6,9 @@ from functools import wraps
 import random
 import requests
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def admin_required(f):
     @wraps(f)
@@ -39,7 +42,7 @@ if not TMDB_API_KEY:
     raise RuntimeError("TMDB_API_KEY could not be found in Docker Secrets or environment variables.")
 # ---------------------------------------------------------
 
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db?timeout=20'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
@@ -243,14 +246,6 @@ def api_movies():
     movies_query = Movie.query.offset(offset).limit(per_page)
     movies_from_db = movies_query.all()
 
-    if not movies_from_db:
-        # If no movies in DB for this page, try to fetch from TMDb
-        # We'll fetch one page at a time from TMDb, corresponding to the requested page number
-        # This assumes TMDb pages align roughly with our internal pagination
-        print(f"DEBUG: No movies found in DB for page {page}. Attempting to fetch from TMDb (page {page}).")
-        fetch_top_rated_movies(start_page=page, end_page=page)
-        movies_from_db = movies_query.all() # Try fetching again after potential new data
-
     movies_data = []
     for movie in movies_from_db:
         movies_data.append({
@@ -296,8 +291,24 @@ with app.app_context():
     db.create_all()
     fetch_genres()
 
+    # Create admin user if not exists
+    admin_user_name = os.environ.get('ADMIN_USER')
+    admin_password = os.environ.get('ADMIN_PASSWORD')
+    if not User.query.filter_by(username=admin_user_name).first():
+        admin_user = User(username=admin_user_name, is_admin=True)
+        admin_user.set_password(admin_password)
+        db.session.add(admin_user)
+        db.session.commit()
+
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
+
+@app.route('/status')
+def status():
+    if current_user.is_authenticated:
+        return jsonify({'isLoggedIn': True, 'username': current_user.username})
+    else:
+        return jsonify({'isLoggedIn': False, 'username': None})
 
 @app.route('/random-movie')
 def random_movie():

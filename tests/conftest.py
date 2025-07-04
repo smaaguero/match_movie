@@ -38,6 +38,10 @@ def auth_client(client, db_session):
 @pytest.fixture(scope='function')
 def db_session():
     db.create_all()
+    with app.app_context():
+        from app import fetch_genres, fetch_top_rated_movies
+        fetch_genres()
+        fetch_top_rated_movies()
     yield
     db.session.remove()
     db.drop_all()
@@ -74,7 +78,3 @@ def mock_tmdb():
         m.get('https://api.themoviedb.org/3/movie/3/credits', json={'cast': [{'name': 'Actor E'}]})
 
         yield m
-        with app.app_context():
-            from app import fetch_genres, fetch_top_rated_movies
-            fetch_genres()
-            fetch_top_rated_movies()

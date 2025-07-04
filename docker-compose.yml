@@ -6,9 +6,16 @@ services:
     container_name: movie_recommender_app
     ports:
       - "5001:5001"
+    volumes:
+      - movie_db_data:/app/instance
+    env_file:
+      - .env
     secrets:
       - flask_secret_key
       - tmdb_api_key
+
+volumes:
+  movie_db_data:
 
 secrets:
   flask_secret_key:

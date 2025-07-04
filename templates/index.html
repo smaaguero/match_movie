@@ -76,7 +76,6 @@
                     <div v-else class="w-full mx-auto mt-4 p-3 bg-gray-800 rounded-lg text-gray-500 text-center text-sm">
                         No trailer available.
                     </div>
-                    <p v-else class="text-base text-gray-400">No poster available</p>
                     <div v-if="{% raw %}isLoggedIn{% endraw %}" class="flex justify-center space-x-3 mt-4">
                         <button @click="{% raw %}setPreference(result.title, result.id, result.genres, true){% endraw %}" class="px-4 py-2 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 transition-colors">Like</button>
                         <button @click="{% raw %}setPreference(result.title, result.id, result.genres, false){% endraw %}" class="px-4 py-2 bg-red-600 text-white text-sm rounded-md hover:bg-red-700 transition-colors">Dislike</button>
