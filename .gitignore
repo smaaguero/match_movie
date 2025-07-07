@@ -110,3 +110,8 @@ venv.bak/
 # Docker secrets
 flask_secret.txt
 tmdb_api_key.txt
+
+#AWS secrets
+match-movie-key.pem
+ec2-permissions-policy.json
+ec2-trust-policy.json

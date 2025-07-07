@@ -20,4 +20,4 @@ COPY . .
 EXPOSE 5001
 
 # Comando para correr la aplicación
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5001", "app:app"]
+CMD python init_db.py && gunicorn -w 4 -b 0.0.0.0:5001 app:app
