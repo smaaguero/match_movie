@@ -14,7 +14,7 @@ chmod +x /usr/local/bin/docker-compose
 
 # Clonar el repositorio
 cd /home/ec2-user
-git clone https://github.com/saguero/match_movie.git
+git clone https://github.com/smaaguero/match_movie
 chown -R ec2-user:ec2-user match_movie
 
 # Entrar al directorio del proyecto
